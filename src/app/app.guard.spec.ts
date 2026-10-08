@@ -3,7 +3,7 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, UrlTree } from '@angular/router';
 import { BehaviorSubject, of, throwError } from 'rxjs';
-import { DefaultStartPageGuard, DonatePageGuard } from './app.guard';
+import { DefaultStartPageGuard, DonatePageGuard, FeatureEnabledGuard } from './app.guard';
 import { IS_DONATION_UI_RESTRICTED_TOKEN } from './app.constants';
 import { DataInitStateService } from './core/data-init/data-init-state.service';
 import { GlobalConfigService } from './features/config/global-config.service';
@@ -214,5 +214,87 @@ describe('DonatePageGuard', () => {
     const donateRoute = APP_ROUTES.find((route) => route.path === 'donate');
 
     expect(donateRoute?.canActivate).toContain(DonatePageGuard);
+  });
+});
+describe('FeatureEnabledGuard', () => {
+  let guard: FeatureEnabledGuard;
+  let router: Router;
+  let appFeatures: Record<string, boolean>;
+
+  beforeEach(() => {
+    appFeatures = {
+      isPlannerEnabled: true,
+      isSchedulerEnabled: true,
+      isBoardsEnabled: true,
+      isSearchEnabled: true,
+      isHabitsEnabled: true,
+      isDonatePageEnabled: true,
+    };
+
+    TestBed.configureTestingModule({
+      providers: [
+        FeatureEnabledGuard,
+        {
+          provide: GlobalConfigService,
+          useValue: {
+            appFeatures: () => appFeatures,
+          },
+        },
+      ],
+    });
+
+    guard = TestBed.inject(FeatureEnabledGuard);
+    router = TestBed.inject(Router);
+  });
+
+  it('allows navigation when the feature is enabled', () => {
+    const result = guard.canActivate({
+      data: {
+        featureConfigKey: 'isPlannerEnabled',
+      },
+    } as any);
+
+    expect(result).toBeTrue();
+  });
+
+  it('redirects when the feature is disabled', () => {
+    appFeatures.isPlannerEnabled = false;
+
+    const result = guard.canActivate({
+      data: {
+        featureConfigKey: 'isPlannerEnabled',
+      },
+    } as any);
+
+    expect(result).not.toBeTrue();
+    expect(router.serializeUrl(result as UrlTree)).toBe('/');
+  });
+
+  it('allows navigation when no feature key is provided', () => {
+    const result = guard.canActivate({
+      data: {},
+    } as any);
+
+    expect(result).toBeTrue();
+  });
+
+  it('checks the feature specified by the route', () => {
+    appFeatures.isPlannerEnabled = false;
+    appFeatures.isBoardsEnabled = true;
+
+    const plannerResult = guard.canActivate({
+      data: {
+        featureConfigKey: 'isPlannerEnabled',
+      },
+    } as any);
+
+    const boardsResult = guard.canActivate({
+      data: {
+        featureConfigKey: 'isBoardsEnabled',
+      },
+    } as any);
+
+    expect(plannerResult).not.toBeTrue();
+    expect(boardsResult).toBeTrue();
   });
 });

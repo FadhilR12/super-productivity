@@ -18,6 +18,7 @@ import { DataInitStateService } from './core/data-init/data-init-state.service';
 import { GlobalConfigService } from './features/config/global-config.service';
 import { getStartPageUrlPath } from './features/config/default-start-page.util';
 import { IS_DONATION_UI_RESTRICTED_TOKEN } from './app.constants';
+import { AppFeaturesConfig } from './features/config/global-config.model';
 
 @Injectable({ providedIn: 'root' })
 export class DonatePageGuard {
@@ -155,5 +156,24 @@ export class DefaultStartPageGuard {
     return of(
       this._router.parseUrl(getStartPageUrlPath(startPage, appFeatures, undefined)),
     );
+  }
+}
+@Injectable({ providedIn: 'root' })
+export class FeatureEnabledGuard {
+  private _configService = inject(GlobalConfigService);
+  private _router = inject(Router);
+
+  canActivate(next: ActivatedRouteSnapshot): boolean | UrlTree {
+    const featureConfigKey = next.data['featureConfigKey'] as
+      | keyof AppFeaturesConfig
+      | undefined;
+
+    if (!featureConfigKey) {
+      return true;
+    }
+
+    return this._configService.appFeatures()[featureConfigKey]
+      ? true
+      : this._router.parseUrl('/');
   }
 }
