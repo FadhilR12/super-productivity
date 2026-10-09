@@ -161,19 +161,23 @@ export class DefaultStartPageGuard {
 @Injectable({ providedIn: 'root' })
 export class FeatureEnabledGuard {
   private _configService = inject(GlobalConfigService);
+  private _dataInitStateService = inject(DataInitStateService);
   private _router = inject(Router);
 
-  canActivate(next: ActivatedRouteSnapshot): boolean | UrlTree {
-    const featureConfigKey = next.data['featureConfigKey'] as
-      | keyof AppFeaturesConfig
-      | undefined;
+  canActivate(
+    next: ActivatedRouteSnapshot,
+    state: RouterStateSnapshot,
+  ): Observable<boolean | UrlTree> {
+    const key = next.data['featureConfigKey'] as keyof AppFeaturesConfig;
 
-    if (!featureConfigKey) {
-      return true;
+    if (!key) {
+      return of(true);
     }
 
-    return this._configService.appFeatures()[featureConfigKey]
-      ? true
-      : this._router.parseUrl('/');
+    return this._dataInitStateService.isAllDataLoadedInitially$.pipe(
+      concatMap(() => this._configService.appFeatures$),
+      take(1),
+      map((features) => (features[key] ? true : this._router.parseUrl('/'))),
+    );
   }
 }

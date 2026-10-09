@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, UrlTree } from '@angular/router';
-import { BehaviorSubject, of, throwError } from 'rxjs';
+import { BehaviorSubject, Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { DefaultStartPageGuard, DonatePageGuard, FeatureEnabledGuard } from './app.guard';
 import { IS_DONATION_UI_RESTRICTED_TOKEN } from './app.constants';
 import { DataInitStateService } from './core/data-init/data-init-state.service';
@@ -216,28 +216,49 @@ describe('DonatePageGuard', () => {
     expect(donateRoute?.canActivate).toContain(DonatePageGuard);
   });
 });
+
 describe('FeatureEnabledGuard', () => {
   let guard: FeatureEnabledGuard;
   let router: Router;
-  let appFeatures: Record<string, boolean>;
+  let dataLoaded$: Subject<boolean>;
+  let appFeatures$: BehaviorSubject<Record<string, boolean>>;
+
+  const initialFeatures: Record<string, boolean> = {
+    isPlannerEnabled: true,
+    isSchedulerEnabled: true,
+    isBoardsEnabled: true,
+    isSearchEnabled: true,
+    isHabitsEnabled: true,
+    isDonatePageEnabled: true,
+  };
+
+  const makeRoute = (featureConfigKey?: string): any =>
+    ({
+      data: featureConfigKey ? { featureConfigKey } : {},
+    }) as any;
+
+  const runGuard = (featureConfigKey?: string): any =>
+    guard.canActivate(makeRoute(featureConfigKey), {} as any);
 
   beforeEach(() => {
-    appFeatures = {
-      isPlannerEnabled: true,
-      isSchedulerEnabled: true,
-      isBoardsEnabled: true,
-      isSearchEnabled: true,
-      isHabitsEnabled: true,
-      isDonatePageEnabled: true,
-    };
+    dataLoaded$ = new Subject<boolean>();
+    appFeatures$ = new BehaviorSubject<Record<string, boolean>>({
+      ...initialFeatures,
+    });
 
     TestBed.configureTestingModule({
       providers: [
         FeatureEnabledGuard,
         {
+          provide: DataInitStateService,
+          useValue: {
+            isAllDataLoadedInitially$: dataLoaded$.asObservable(),
+          },
+        },
+        {
           provide: GlobalConfigService,
           useValue: {
-            appFeatures: () => appFeatures,
+            appFeatures$: appFeatures$.asObservable(),
           },
         },
       ],
@@ -247,54 +268,78 @@ describe('FeatureEnabledGuard', () => {
     router = TestBed.inject(Router);
   });
 
-  it('allows navigation when the feature is enabled', () => {
-    const result = guard.canActivate({
-      data: {
-        featureConfigKey: 'isPlannerEnabled',
-      },
-    } as any);
+  it('allows navigation when the feature is enabled', async () => {
+    const resultPromise = firstValueFrom(runGuard('isPlannerEnabled'));
+
+    dataLoaded$.next(true);
+
+    const result = await resultPromise;
 
     expect(result).toBeTrue();
   });
 
-  it('redirects when the feature is disabled', () => {
-    appFeatures.isPlannerEnabled = false;
+  it('redirects when the feature is disabled', async () => {
+    appFeatures$.next({
+      ...initialFeatures,
+      isPlannerEnabled: false,
+    });
 
-    const result = guard.canActivate({
-      data: {
-        featureConfigKey: 'isPlannerEnabled',
-      },
-    } as any);
+    const resultPromise = firstValueFrom(runGuard('isPlannerEnabled'));
+
+    dataLoaded$.next(true);
+
+    const result = await resultPromise;
 
     expect(result).not.toBeTrue();
     expect(router.serializeUrl(result as UrlTree)).toBe('/');
   });
 
-  it('allows navigation when no feature key is provided', () => {
-    const result = guard.canActivate({
-      data: {},
-    } as any);
+  it('allows navigation when no feature key is provided', async () => {
+    const resultPromise = firstValueFrom(runGuard());
+
+    dataLoaded$.next(true);
+
+    const result = await resultPromise;
 
     expect(result).toBeTrue();
   });
 
-  it('checks the feature specified by the route', () => {
-    appFeatures.isPlannerEnabled = false;
-    appFeatures.isBoardsEnabled = true;
+  it('checks the feature specified by the route', async () => {
+    appFeatures$.next({
+      ...initialFeatures,
+      isPlannerEnabled: false,
+      isBoardsEnabled: true,
+    });
 
-    const plannerResult = guard.canActivate({
-      data: {
-        featureConfigKey: 'isPlannerEnabled',
-      },
-    } as any);
+    const plannerPromise = firstValueFrom(runGuard('isPlannerEnabled'));
+    const boardsPromise = firstValueFrom(runGuard('isBoardsEnabled'));
 
-    const boardsResult = guard.canActivate({
-      data: {
-        featureConfigKey: 'isBoardsEnabled',
-      },
-    } as any);
+    dataLoaded$.next(true);
+
+    const plannerResult = await plannerPromise;
+    const boardsResult = await boardsPromise;
 
     expect(plannerResult).not.toBeTrue();
+    expect(router.serializeUrl(plannerResult as UrlTree)).toBe('/');
     expect(boardsResult).toBeTrue();
+  });
+
+  it('waits for initial data loading before checking the feature', () => {
+    let emitted = false;
+    let result: boolean | UrlTree | undefined;
+
+    const subscription = runGuard('isPlannerEnabled').subscribe((value) => {
+      emitted = true;
+      result = value;
+    });
+
+    expect(emitted).toBeFalse();
+
+    dataLoaded$.next(true);
+
+    expect(emitted).toBeTrue();
+    expect(result).toBeTrue();
+
+    subscription.unsubscribe();
   });
 });
