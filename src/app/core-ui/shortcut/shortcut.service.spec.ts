@@ -58,12 +58,15 @@ describe('ShortcutService', () => {
       cfg: signal({
         keyboard: {
           goToScheduledView: 'Shift+S',
+          showSearchBar: 'Shift+F',
           showHelp: '?',
           [PLUGIN_SHORTCUT_CFG_KEY]: 'Ctrl+Shift+U',
         },
       }),
       appFeatures: signal({
         isFocusModeEnabled: true,
+        isSchedulerEnabled: true,
+        isSearchEnabled: true,
       }),
     };
 
@@ -112,8 +115,13 @@ describe('ShortcutService', () => {
       expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
 
-    it('should navigate to schedule if TaskShortcutService did NOT handle Shift+S', () => {
-      mockTaskShortcutService.handleTaskShortcuts.and.returnValue(false);
+    it('should navigate to schedule when Shift+S is pressed and scheduler is enabled', () => {
+      mockConfigService.appFeatures.set({
+        isFocusModeEnabled: true,
+        isSchedulerEnabled: true,
+        isSearchEnabled: true,
+      });
+
       const ev = new KeyboardEvent('keydown', {
         code: 'KeyS',
         shiftKey: true,
@@ -124,6 +132,62 @@ describe('ShortcutService', () => {
 
       expect(mockTaskShortcutService.handleTaskShortcuts).toHaveBeenCalledWith(ev);
       expect(mockRouter.navigate).toHaveBeenCalledWith(['/schedule']);
+    });
+
+    it('should NOT navigate to schedule when scheduler is disabled', () => {
+      mockConfigService.appFeatures.set({
+        isFocusModeEnabled: true,
+        isSchedulerEnabled: false,
+        isSearchEnabled: true,
+      });
+
+      const ev = new KeyboardEvent('keydown', {
+        code: 'KeyS',
+        shiftKey: true,
+      });
+      Object.defineProperty(ev, 'target', { value: document.body });
+
+      service.handleKeyDown(ev);
+
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
+    it('should navigate to search when Shift+F is pressed and search is enabled', () => {
+      mockConfigService.appFeatures.set({
+        isFocusModeEnabled: true,
+        isSchedulerEnabled: true,
+        isSearchEnabled: true,
+      });
+
+      mockTaskShortcutService.handleTaskShortcuts.and.returnValue(false);
+      const ev = new KeyboardEvent('keydown', {
+        code: 'KeyF',
+        shiftKey: true,
+      });
+      Object.defineProperty(ev, 'target', { value: document.body });
+
+      service.handleKeyDown(ev);
+
+      expect(mockTaskShortcutService.handleTaskShortcuts).toHaveBeenCalledWith(ev);
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/search']);
+    });
+
+    it('should NOT navigate to search when search is disabled', () => {
+      mockConfigService.appFeatures.set({
+        isFocusModeEnabled: true,
+        isSchedulerEnabled: true,
+        isSearchEnabled: false,
+      });
+
+      const ev = new KeyboardEvent('keydown', {
+        code: 'KeyF',
+        shiftKey: true,
+      });
+      Object.defineProperty(ev, 'target', { value: document.body });
+
+      service.handleKeyDown(ev);
+
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
 
     // Ctrl+Shift+U is the combo PLUGIN_SHORTCUT_CFG_KEY is bound to above.
